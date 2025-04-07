@@ -1,0 +1,310 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube VIBE Index</title>
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      padding: 2rem;
+    }
+    input, button {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin: 0.5rem;
+      border-radius: 8px;
+      width: 80%;
+    }
+    .button-primary {
+      background-color: #007bff;
+      border: none;
+      color: white;
+    }
+    .button-secondary {
+      background-color: #6f42c1;
+      border: none;
+      color: white;
+    }
+    .button-primary:hover, .button-secondary:hover {
+      opacity: 0.8;
+    }
+    .input-container {
+      display: flex;
+      flex-direction: column;
+      margin-top: 1rem;
+    }
+    .tab-container {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 1rem;
+    }
+    .tab {
+      padding: 10px;
+      cursor: pointer;
+      background-color: #333;
+      border-radius: 8px;
+    }
+    .active-tab {
+      background-color: #444;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 8px;
+      border: 1px solid #333;
+      flex: 1;
+      margin-right: 1rem;
+    }
+    .card-container {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 0.5rem;
+      text-align: left;
+    }
+    th {
+      background: #222;
+    }
+    .highlight-yellow {
+      color: #ffd700;
+      font-weight: bold;
+    }
+    .highlight-orange {
+      color: #ffa500;
+      font-weight: bold;
+      font-size: 1.2em;
+    }
+    .bullet-points {
+      margin-top: 1rem;
+      list-style-type: disc;
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>YouTube VIBE Index 분석</h1>
+  <div class="tab-container">
+    <div class="tab active-tab" id="single-tab" onclick="showSingleAnalysis()">단일 채널 분석</div>
+    <div class="tab" id="compare-tab" onclick="showCompareAnalysis()">여러 채널 비교</div>
+  </div>
+
+  <!-- 단일 채널 분석 -->
+  <div id="single-analysis" class="active-tab">
+    <div class="input-container">
+      <input id="single-channel-url" placeholder="유튜브 채널 URL 입력" />
+      <button class="button-primary" onclick="fetchSingleChannelData()">채널 분석</button>
+    </div>
+    <div id="single-channel-result"></div>
+  </div>
+
+  <!-- 여러 채널 비교 -->
+  <div id="compare-analysis" style="display: none;">
+    <div class="input-container">
+      <input id="channel-url-1" placeholder="채널 URL 1 입력" />
+      <input id="channel-url-2" placeholder="채널 URL 2 입력 (선택)" />
+      <input id="channel-url-3" placeholder="채널 URL 3 입력 (선택)" />
+      <button class="button-secondary" onclick="fetchCompareChannels()">채널 비교 분석</button>
+    </div>
+    <div id="compare-result" class="card-container"></div>
+  </div>
+
+  <script>
+    const API_KEY = "AIzaSyBnzGv5joUq8cFftHTyGeTJECTLQzYxNf8";
+
+    // 탭 전환 함수
+    function showSingleAnalysis() {
+      document.getElementById("single-analysis").style.display = "block";
+      document.getElementById("compare-analysis").style.display = "none";
+      document.getElementById("single-tab").classList.add("active-tab");
+      document.getElementById("compare-tab").classList.remove("active-tab");
+    }
+
+    function showCompareAnalysis() {
+      document.getElementById("single-analysis").style.display = "none";
+      document.getElementById("compare-analysis").style.display = "block";
+      document.getElementById("compare-tab").classList.add("active-tab");
+      document.getElementById("single-tab").classList.remove("active-tab");
+    }
+
+    async function fetchSingleChannelData() {
+      const url = document.getElementById("single-channel-url").value;
+      const result = document.getElementById("single-channel-result");
+      result.innerHTML = "불러오는 중...";
+
+      const channelId = await getChannelId(url);
+      if (!channelId) {
+        result.innerHTML = "채널 ID를 찾을 수 없습니다.";
+        return;
+      }
+
+      const [info, videos] = await Promise.all([getChannelInfo(channelId), getVideos(channelId)]);
+      const stats = await getStats(videos.map(v => v.id.videoId));
+
+      const E = calculateEngagementRate(stats);
+      const V = calculateViewStability(stats);
+      const U = calculateUploadFrequency(videos);
+      const VIBE = (E * 0.5 + V * 0.3 + U * 0.2).toFixed(2);
+
+      const basic = info.snippet;
+      const detail = info.statistics;
+
+      let html = `
+        <div class='card'>
+          <h2>${basic.title}</h2>
+          <img src="${basic.thumbnails.default.url}" alt="profile" />
+          <p>구독자: ${formatNumber(detail.subscriberCount)}</p>
+          <p>채널 개설일: ${basic.publishedAt.split("T")[0]}</p>
+          <hr>
+          <p>참여율 (E): <span class="highlight-yellow">${E.toFixed(2)}%</span><br>
+             - 좋아요: ${formatNumber(likeSum)}, 댓글: ${formatNumber(commentSum)}, 조회수: ${formatNumber(viewSum)}</p>
+          <p>조회수 안정성 (V): <span class="highlight-yellow">${(V * 100).toFixed(2)}%</span><br>
+             - 평균: ${formatNumber(viewAvg)}, 표준편차: ${formatNumber(viewStd)}</p>
+          <p>업로드 빈도 (U): <span class="highlight-yellow">${U.toFixed(2)}%</span><br>
+             - 최근 60일 업로드 수: ${recentUploadCount}</p>
+          <p><strong>VIBE Index: <span class="highlight-orange">${VIBE}</span></strong></p>
+        </div>
+        <h3>최신 영상 50개</h3>
+        <table>
+          <tr><th>제목</th><th>업로드 날짜</th><th>조회수</th><th>좋아요</th><th>댓글</th></tr>
+      `;
+
+      stats.forEach((v, i) => {
+        const s = v.statistics;
+        html += `<tr>
+          <td>${videos[i].snippet.title}</td>
+          <td>${videos[i].snippet.publishedAt.split("T")[0]}</td>
+          <td>${formatNumber(s.viewCount)}</td>
+          <td>${formatNumber(s.likeCount)}</td>
+          <td>${formatNumber(s.commentCount)}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      result.innerHTML = html;
+    }
+
+    async function fetchCompareChannels() {
+      const urls = [
+        document.getElementById("channel-url-1").value,
+        document.getElementById("channel-url-2").value,
+        document.getElementById("channel-url-3").value
+      ];
+
+      const container = document.getElementById("compare-result");
+      container.innerHTML = "불러오는 중...";
+
+      for (let url of urls) {
+        if (!url) continue;
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = "불러오는 중...";
+        container.appendChild(card);
+
+        try {
+          const html = await analyzeChannel(url);
+          card.innerHTML = html;
+        } catch (err) {
+          card.innerHTML = "<p style='color:red'>오류 발생: " + err.message + "</p>";
+        }
+      }
+    }
+
+    async function analyzeChannel(url) {
+      const channelId = await getChannelId(url);
+      if (!channelId) throw new Error("채널 ID 확인 실패");
+
+      const [info, videos] = await Promise.all([getChannelInfo(channelId), getVideos(channelId)]);
+      const stats = await getStats(videos.map(v => v.id.videoId));
+
+      let likeSum = 0, commentSum = 0, viewSum = 0;
+      stats.forEach(v => {
+        likeSum += parseInt(v.statistics.likeCount || 0);
+        commentSum += parseInt(v.statistics.commentCount || 0);
+        viewSum += parseInt(v.statistics.viewCount || 1);
+      });
+      const E = ((likeSum + commentSum) / viewSum) * 100;
+
+      const views = stats.slice(0, 10).map(v => parseInt(v.statistics.viewCount || 0));
+      const avg = views.reduce((a, b) => a + b, 0) / views.length;
+      const stdDev = Math.sqrt(views.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / views.length);
+      const V = 1 - stdDev / avg;
+
+      const now = new Date();
+      const recentUploadCount = videos.filter(v => {
+        const pub = new Date(v.snippet.publishedAt);
+        return (now - pub) / (1000 * 60 * 60 * 24) <= 60;
+      }).length;
+      const U = (recentUploadCount / 60) * 100;
+
+      const VIBE = (E * 0.5 + V * 0.3 + U * 0.2).toFixed(2);
+
+      const basic = info.snippet;
+      const detail = info.statistics;
+
+      let html = "<h2>" + basic.title + "</h2>" +
+        "<img src='" + basic.thumbnails.default.url + "' alt='profile' />" +
+        "<p>구독자: " + formatNumber(detail.subscriberCount) + "</p>" +
+        "<p>채널 개설일: " + basic.publishedAt.split('T')[0] + "</p><hr>" +
+        "<p>참여율 (E): <span class='highlight-yellow'>" + E.toFixed(2) + "%</span><br>" +
+        "좋아요: " + formatNumber(likeSum) + ", 댓글: " + formatNumber(commentSum) + ", 조회수: " + formatNumber(viewSum) + "</p>" +
+        "<p>조회수 안정성 (V): <span class='highlight-yellow'>" + (V * 100).toFixed(2) + "%</span><br>" +
+        "평균: " + formatNumber(avg) + ", 표준편차: " + formatNumber(stdDev) + "</p>" +
+        "<p>업로드 빈도 (U): <span class='highlight-yellow'>" + U.toFixed(2) + "%</span><br>" +
+        "최근 60일 업로드 수: " + recentUploadCount + "</p>" +
+        "<p><strong>VIBE Index: <span class='highlight-orange'>" + VIBE + "</span></strong></p>";
+
+      return html;
+    }
+
+    async function getChannelId(url) {
+      if (url.includes('/channel/')) {
+        return url.split('/channel/')[1].split(/[/?]/)[0];
+      } else if (url.includes('@')) {
+        const username = url.split('@')[1].split(/[/?]/)[0];
+        const res = await fetch("https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=" + username + "&key=" + API_KEY);
+        const data = await res.json();
+        return data.items?.[0]?.snippet?.channelId || null;
+      }
+      return null;
+    }
+
+    async function getChannelInfo(id) {
+      const res = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=" + id + "&key=" + API_KEY);
+      const data = await res.json();
+      return data.items?.[0];
+    }
+
+    async function getVideos(channelId) {
+      const res = await fetch("https://www.googleapis.com/youtube/v3/search?key=" + API_KEY + "&channelId=" + channelId + "&part=snippet,id&order=date&maxResults=50");
+      const data = await res.json();
+      return data.items.filter(i => i.id.videoId);
+    }
+
+    async function getStats(videoIds) {
+      const res = await fetch("https://www.googleapis.com/youtube/v3/videos?key=" + API_KEY + "&id=" + videoIds.join(',') + "&part=statistics");
+      const data = await res.json();
+      return data.items;
+    }
+
+    function formatNumber(num) {
+      try {
+        return num.toLocaleString();
+      } catch {
+        return num;
+      }
+    }
+  </script>
+</body>
+</html>
